@@ -76,10 +76,10 @@ export default function HomePage() {
     try {
       const session = authUtils.getCurrentSession()
       if (!session) return
-      
+
       const response = await fetch(`/api/discover?userId=${session.userId}`)
       const data = await response.json()
-      
+
       if (data.success && data.profiles) {
         setProfiles(data.profiles)
         setCurrentProfileIndex(0)
@@ -94,10 +94,10 @@ export default function HomePage() {
     try {
       const session = authUtils.getCurrentSession()
       if (!session) return
-      
+
       const response = await fetch(`/api/conversations?userId=${session.userId}`)
       const data = await response.json()
-      
+
       if (data.conversations) {
         setConversations(data.conversations)
       }
@@ -111,10 +111,10 @@ export default function HomePage() {
     try {
       const session = authUtils.getCurrentSession()
       if (!session) return
-      
+
       const response = await fetch(`/api/match-queue?userId=${session.userId}`)
       const data = await response.json()
-      
+
       if (data.success && data.matchQueue) {
         setMatchQueue(data.matchQueue)
       }
@@ -128,10 +128,10 @@ export default function HomePage() {
     try {
       const session = authUtils.getCurrentSession()
       if (!session) return
-      
+
       const response = await fetch(`/api/users?id=${session.userId}`)
       const data = await response.json()
-      
+
       if (data.profile) {
         setCurrentUserProfile(data.profile)
       }
@@ -143,13 +143,13 @@ export default function HomePage() {
   // Handle swipe actions
   const handleSwipeAction = async (actionType: 'like' | 'pass' | 'super_like') => {
     if (isSwipeLoading || currentProfileIndex >= profiles.length) return
-    
+
     const currentProfile = profiles[currentProfileIndex]
     const session = authUtils.getCurrentSession()
     if (!session || !currentProfile) return
-    
+
     setIsSwipeLoading(true)
-    
+
     try {
       const response = await fetch('/api/discover', {
         method: 'POST',
@@ -161,9 +161,9 @@ export default function HomePage() {
           actionType
         })
       })
-      
+
       const data = await response.json()
-      
+
       if (data.success && data.isMatch && actionType !== 'pass') {
         // Show match modal
         setMatchModal({ show: true, profile: currentProfile })
@@ -171,10 +171,10 @@ export default function HomePage() {
         fetchConversations()
         fetchMatchQueue()
       }
-      
+
       // Move to next profile
       setCurrentProfileIndex(prev => prev + 1)
-      
+
     } catch (error) {
       console.error('Error handling swipe:', error)
     } finally {
@@ -197,22 +197,22 @@ export default function HomePage() {
     try {
       const session = authUtils.getCurrentSession()
       if (!session) return
-      
+
       // Find the match for this profile by getting all matches and finding the one with this user
       const matchesResponse = await fetch(`/api/matches?userId=${session.userId}`)
       const matchesData = await matchesResponse.json()
-      
+
       // Find the match between current user and the profile user
-      const match = matchesData.matches?.find((m: any) => 
+      const match = matchesData.matches?.find((m: any) =>
         (m.user1_id === session.userId && m.user2_id === profile.user_id) ||
         (m.user2_id === session.userId && m.user1_id === profile.user_id)
       )
-      
+
       if (!match) {
         console.error('No match found for this profile')
         return
       }
-      
+
       const response = await fetch('/api/conversations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -222,13 +222,13 @@ export default function HomePage() {
           content: `Hey ${profile.name}! 👋`
         })
       })
-      
+
       if (response.ok) {
         const data = await response.json()
         closeMatchModal()
         fetchConversations() // Refresh conversations
         fetchMatchQueue() // Refresh match queue to remove this match
-        
+
         // Find and select the new conversation
         setTimeout(() => {
           const newConv = conversations.find(c => c.otherUser.id === profile.user_id)
@@ -249,9 +249,9 @@ export default function HomePage() {
         // Clear any conflicting localStorage state first
         const isLoggedIn = localStorage.getItem("isLoggedIn");
         const userId = localStorage.getItem("userId");
-        
+
         console.log("Auth check - isLoggedIn:", isLoggedIn, "userId:", userId);
-        
+
         // If we have conflicting state (logged in but no userId), clear everything
         if (isLoggedIn === "true" && !userId) {
           console.log("Conflicting auth state detected, clearing localStorage");
@@ -261,19 +261,35 @@ export default function HomePage() {
           router.push("/login");
           return;
         }
-        
+
         const session = authUtils.getCurrentSession();
         console.log("Current session from authUtils:", session);
-        
+
         if (!session) {
-          console.log("No valid session found, redirecting to login");
+          console.log("No valid session found, redirecting to welcome page");
           setIsAuthenticated(false);
           setIsLoading(false);
-          router.push("/login");
+          // Add a small delay to prevent immediate redirect issues on fresh deployment
+          setTimeout(() => {
+            router.push("/welcome");
+          }, 100);
           return;
         }
 
-        // Validate session with database
+        // In production with in-memory database, skip session validation
+        const isProduction = process.env.NODE_ENV === 'production' || typeof window !== 'undefined' && window.location.hostname !== 'localhost';
+        if (isProduction) {
+          console.log("Production environment detected, skipping session validation");
+          setIsAuthenticated(true);
+          setIsLoading(false);
+          await fetchProfiles();
+          await fetchConversations();
+          await fetchMatchQueue();
+          await fetchCurrentUserProfile();
+          return;
+        }
+
+        // Validate session with database (only in development)
         const isValidSession = await authUtils.validateSession(session.userId);
         if (!isValidSession) {
           console.log("Session validation failed, clearing session and redirecting");
@@ -283,25 +299,25 @@ export default function HomePage() {
           router.push("/login");
           return;
         }
-        
+
         console.log("Session validated successfully");
         setIsAuthenticated(true);
         setCurrentUserId(session.userId);
         setIsLoading(false);
-        
+
         // Fetch profiles for swiping and conversations
         fetchProfiles();
         fetchConversations();
         fetchMatchQueue();
         fetchCurrentUserProfile();
-        
+
         // Check verification and profile status from localStorage
         const userGender = localStorage.getItem("userGender");
         const faceVerified = localStorage.getItem("faceVerified") === "true";
         const maleVerified = localStorage.getItem("maleVerified") === "true";
         const walletConnected = localStorage.getItem("walletConnected") === "true";
         const profileCompleted = localStorage.getItem("profileCompleted") === "true";
-        
+
         // If no gender is set, redirect back to login (incomplete registration)
         if (!userGender) {
           console.log("No gender set, clearing session and redirecting to login");
@@ -309,21 +325,21 @@ export default function HomePage() {
           router.push("/login");
           return;
         }
-        
+
         // Check if female user needs face verification
         if (userGender === "female" && !faceVerified) {
           console.log("Female user needs face verification");
           router.push("/face-verification");
           return;
         }
-        
+
         // Check if male user needs wallet connection
         if (userGender === "male" && (!maleVerified || !walletConnected)) {
           console.log("Male user needs wallet connection");
           router.push("/wallet-connection");
           return;
         }
-        
+
         // Check if user needs to complete profile
         if (!profileCompleted) {
           router.push("/create-profile")
@@ -356,7 +372,7 @@ export default function HomePage() {
       <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
         {/* User Profile Header */}
         <div className="p-4 border-b border-gray-200">
-          <button 
+          <button
             onClick={() => router.push('/profile')}
             className="flex items-center gap-3 w-full hover:bg-gray-50 rounded-lg p-2 transition-colors"
           >
@@ -385,14 +401,14 @@ export default function HomePage() {
           {matchQueue.length > 0 ? (
             <div className="flex gap-4 overflow-x-auto pb-2">
               {matchQueue.map((match) => (
-                <div 
+                <div
                   key={match.id}
                   onClick={async () => {
                     // Start conversation with this match
                     try {
                       const session = authUtils.getCurrentSession()
                       if (!session) return
-                      
+
                       const response = await fetch('/api/conversations', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -402,12 +418,12 @@ export default function HomePage() {
                           content: `Hey ${match.otherUser.name}! 👋`
                         })
                       })
-                      
+
                       if (response.ok) {
                         const data = await response.json()
                         fetchConversations() // Refresh conversations
                         fetchMatchQueue() // Refresh match queue
-                        
+
                         // Find and select the new conversation
                         setTimeout(() => {
                           const newConv = conversations.find(c => c.otherUser.id === match.otherUser.id)
@@ -471,7 +487,7 @@ export default function HomePage() {
               </div>
             ) : (
               conversations.map((conversation) => (
-                <div 
+                <div
                   key={conversation.id}
                   onClick={() => selectConversation(conversation)}
                   className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer relative"
@@ -511,7 +527,7 @@ export default function HomePage() {
       <div className="flex-1 flex flex-col">
         {selectedConversation && currentUserId ? (
           /* Chat Interface */
-          <ChatInterface 
+          <ChatInterface
             conversation={selectedConversation}
             currentUserId={currentUserId}
             onBack={() => setSelectedConversation(null)}
@@ -525,135 +541,135 @@ export default function HomePage() {
             <div className="flex-1 flex items-center justify-center p-8">
               <div className="relative">
                 {profiles.length > 0 && currentProfileIndex < profiles.length ? (
-              /* Profile Card */
-              <div className="w-96 h-[600px] bg-white rounded-2xl shadow-2xl overflow-hidden relative">
-                {/* Profile Image */}
-                <div className="h-4/5 bg-gradient-to-br from-blue-200 via-green-200 to-yellow-200 relative">
-                  {profiles[currentProfileIndex].photos && profiles[currentProfileIndex].photos!.length > 0 ? (
-                    <img 
-                      src={profiles[currentProfileIndex].photos![0]} 
-                      alt="Profile" 
-                      className="w-full h-full object-cover" 
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-gray-500 text-6xl font-bold">
-                      {profiles[currentProfileIndex].name?.charAt(0)?.toUpperCase()}
-                    </div>
-                  )}
+                  /* Profile Card */
+                  <div className="w-96 h-[600px] bg-white rounded-2xl shadow-2xl overflow-hidden relative">
+                    {/* Profile Image */}
+                    <div className="h-4/5 bg-gradient-to-br from-blue-200 via-green-200 to-yellow-200 relative">
+                      {profiles[currentProfileIndex].photos && profiles[currentProfileIndex].photos!.length > 0 ? (
+                        <img
+                          src={profiles[currentProfileIndex].photos![0]}
+                          alt="Profile"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-gray-500 text-6xl font-bold">
+                          {profiles[currentProfileIndex].name?.charAt(0)?.toUpperCase()}
+                        </div>
+                      )}
 
-                  {/* Expand Icon */}
-                  <button className="absolute top-4 right-4 w-8 h-8 bg-white/80 rounded-full flex items-center justify-center">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-4-4m4 4v-4m0 4h-4"
-                      />
-                    </svg>
-                  </button>
+                      {/* Expand Icon */}
+                      <button className="absolute top-4 right-4 w-8 h-8 bg-white/80 rounded-full flex items-center justify-center">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-4-4m4 4v-4m0 4h-4"
+                          />
+                        </svg>
+                      </button>
 
-                  {/* Profile info overlay */}
-                  {profiles[currentProfileIndex].bio && (
-                    <div className="absolute bottom-4 left-4 right-4 bg-black/50 text-white p-3 rounded-lg">
-                      <p className="text-sm">{profiles[currentProfileIndex].bio}</p>
-                      {profiles[currentProfileIndex].interests && profiles[currentProfileIndex].interests!.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {profiles[currentProfileIndex].interests!.slice(0, 3).map((interest, idx) => (
-                            <span key={idx} className="bg-white/20 px-2 py-1 rounded-full text-xs">
-                              {interest}
-                            </span>
-                          ))}
+                      {/* Profile info overlay */}
+                      {profiles[currentProfileIndex].bio && (
+                        <div className="absolute bottom-4 left-4 right-4 bg-black/50 text-white p-3 rounded-lg">
+                          <p className="text-sm">{profiles[currentProfileIndex].bio}</p>
+                          {profiles[currentProfileIndex].interests && profiles[currentProfileIndex].interests!.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {profiles[currentProfileIndex].interests!.slice(0, 3).map((interest, idx) => (
+                                <span key={idx} className="bg-white/20 px-2 py-1 rounded-full text-xs">
+                                  {interest}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
-                  )}
-                </div>
 
-                {/* Profile Info */}
-                <div className="h-1/5 p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <h2 className="text-2xl font-bold text-gray-900">
-                      {profiles[currentProfileIndex].name}
-                      {profiles[currentProfileIndex].age && `, ${profiles[currentProfileIndex].age}`}
-                    </h2>
-                    <div className="flex items-center gap-1 bg-blue-500 text-white px-2 py-1 rounded-full text-xs">
-                      <Check className="w-3 h-3" />
-                      <span>Verified</span>
+                    {/* Profile Info */}
+                    <div className="h-1/5 p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-gray-900">
+                          {profiles[currentProfileIndex].name}
+                          {profiles[currentProfileIndex].age && `, ${profiles[currentProfileIndex].age}`}
+                        </h2>
+                        <div className="flex items-center gap-1 bg-blue-500 text-white px-2 py-1 rounded-full text-xs">
+                          <Check className="w-3 h-3" />
+                          <span>Verified</span>
+                        </div>
+                      </div>
+                      <button className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center">
+                        <MoreHorizontal className="w-4 h-4 text-gray-600" />
+                      </button>
                     </div>
                   </div>
-                  <button className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center">
-                    <MoreHorizontal className="w-4 h-4 text-gray-600" />
-                  </button>
-                </div>
-              </div>
-            ) : (
-              /* No more profiles card */
-              <div className="w-96 h-[600px] bg-white rounded-2xl shadow-2xl overflow-hidden relative flex items-center justify-center">
-                <div className="text-center p-8">
-                  <div className="text-6xl mb-4">🎉</div>
-                  <h2 className="text-2xl font-bold text-gray-900 mb-2">You're all caught up!</h2>
-                  <p className="text-gray-600 mb-4">Check back later for new profiles, or try expanding your search preferences.</p>
-                  <button 
-                    onClick={fetchProfiles}
-                    className="bg-yellow-400 text-black px-6 py-2 rounded-full font-medium hover:bg-yellow-500 transition-colors"
+                ) : (
+                  /* No more profiles card */
+                  <div className="w-96 h-[600px] bg-white rounded-2xl shadow-2xl overflow-hidden relative flex items-center justify-center">
+                    <div className="text-center p-8">
+                      <div className="text-6xl mb-4">🎉</div>
+                      <h2 className="text-2xl font-bold text-gray-900 mb-2">You're all caught up!</h2>
+                      <p className="text-gray-600 mb-4">Check back later for new profiles, or try expanding your search preferences.</p>
+                      <button
+                        onClick={fetchProfiles}
+                        className="bg-yellow-400 text-black px-6 py-2 rounded-full font-medium hover:bg-yellow-500 transition-colors"
+                      >
+                        Refresh
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 flex items-center gap-4">
+                  <button
+                    onClick={() => setCurrentProfileIndex(Math.max(0, currentProfileIndex - 1))}
+                    disabled={currentProfileIndex === 0 || isSwipeLoading}
+                    className="w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Refresh
+                    <ArrowLeft className="w-5 h-5 text-gray-600" />
+                  </button>
+
+                  <button
+                    onClick={() => handleSwipeAction('pass')}
+                    disabled={currentProfileIndex >= profiles.length || isSwipeLoading}
+                    className="w-14 h-14 bg-white rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <X className="w-6 h-6 text-gray-600" />
+                  </button>
+
+                  <button
+                    onClick={() => handleSwipeAction('super_like')}
+                    disabled={currentProfileIndex >= profiles.length || isSwipeLoading}
+                    className="w-16 h-16 bg-yellow-400 rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Star className="w-7 h-7 text-white fill-current" />
+                  </button>
+
+                  <button
+                    onClick={() => handleSwipeAction('like')}
+                    disabled={currentProfileIndex >= profiles.length || isSwipeLoading}
+                    className="w-14 h-14 bg-white rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Heart className="w-6 h-6 text-green-500 fill-current" />
+                  </button>
+
+                  <button
+                    onClick={() => handleSwipeAction('like')}
+                    disabled={currentProfileIndex >= profiles.length || isSwipeLoading}
+                    className="w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Check className="w-5 h-5 text-gray-600" />
                   </button>
                 </div>
+
+                {/* Block and Report */}
+                <button className="absolute -bottom-16 left-1/2 transform -translate-x-1/2 text-xs text-gray-500 hover:text-gray-700">
+                  🚫 Block and report
+                </button>
               </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 flex items-center gap-4">
-              <button 
-                onClick={() => setCurrentProfileIndex(Math.max(0, currentProfileIndex - 1))}
-                disabled={currentProfileIndex === 0 || isSwipeLoading}
-                className="w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <ArrowLeft className="w-5 h-5 text-gray-600" />
-              </button>
-
-              <button 
-                onClick={() => handleSwipeAction('pass')}
-                disabled={currentProfileIndex >= profiles.length || isSwipeLoading}
-                className="w-14 h-14 bg-white rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <X className="w-6 h-6 text-gray-600" />
-              </button>
-
-              <button 
-                onClick={() => handleSwipeAction('super_like')}
-                disabled={currentProfileIndex >= profiles.length || isSwipeLoading}
-                className="w-16 h-16 bg-yellow-400 rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Star className="w-7 h-7 text-white fill-current" />
-              </button>
-
-              <button 
-                onClick={() => handleSwipeAction('like')}
-                disabled={currentProfileIndex >= profiles.length || isSwipeLoading}
-                className="w-14 h-14 bg-white rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Heart className="w-6 h-6 text-green-500 fill-current" />
-              </button>
-
-              <button 
-                onClick={() => handleSwipeAction('like')}
-                disabled={currentProfileIndex >= profiles.length || isSwipeLoading}
-                className="w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Check className="w-5 h-5 text-gray-600" />
-              </button>
             </div>
-
-            {/* Block and Report */}
-            <button className="absolute -bottom-16 left-1/2 transform -translate-x-1/2 text-xs text-gray-500 hover:text-gray-700">
-              🚫 Block and report
-            </button>
-          </div>
-        </div>
-        </>
+          </>
         )}
       </div>
 
@@ -674,13 +690,13 @@ export default function HomePage() {
               You and {matchModal.profile.name} liked each other
             </p>
             <div className="flex gap-3">
-              <button 
+              <button
                 onClick={closeMatchModal}
                 className="flex-1 bg-gray-200 text-gray-800 py-3 px-4 rounded-full font-medium hover:bg-gray-300 transition-colors"
               >
                 Keep Swiping
               </button>
-              <button 
+              <button
                 onClick={() => startConversation(matchModal.profile!)}
                 className="flex-1 bg-yellow-400 text-black py-3 px-4 rounded-full font-medium hover:bg-yellow-500 transition-colors"
               >

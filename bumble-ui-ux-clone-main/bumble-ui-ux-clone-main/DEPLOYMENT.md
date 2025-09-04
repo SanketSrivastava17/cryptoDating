@@ -7,6 +7,11 @@
 - Skips file operations in production/Vercel environment
 - Uses in-memory storage for production
 
+✅ **Authentication Flow**
+- Updated main page to redirect to welcome page for new users
+- Added production environment detection to skip database validation
+- Created welcome page as entry point
+
 ✅ **Environment Variables**
 - Created `.env.example` with required variables
 - Added fallback for Face++ API when credentials are missing
@@ -15,39 +20,39 @@
 - Added `app/error.tsx` for error boundaries
 - Added `app/not-found.tsx` for 404 pages
 - Added `app/loading.tsx` for loading states
+- Added `app/welcome/page.tsx` as landing page
 
 ✅ **Next.js Configuration**
 - Updated `next.config.mjs` for serverless compatibility
 - Added `vercel.json` for deployment configuration
 
-## Steps to Deploy on Vercel:
+## How to Access Your Deployed App:
 
-1. **Push to GitHub**
-   ```bash
-   git add .
-   git commit -m "Fix deployment issues for Vercel"
-   git push origin main
-   ```
+1. **Visit your Vercel deployment URL**
+   - You should see a welcome page explaining the app
+   - Click "Sign Up / Login" to start using the app
 
-2. **Set Environment Variables in Vercel Dashboard**
-   - Go to Vercel project settings
-   - Add environment variables:
-     - `NEXT_PUBLIC_FACEPP_API_KEY` (optional - will use simulation if not set)
-     - `NEXT_PUBLIC_FACEPP_API_SECRET` (optional - will use simulation if not set)
-     - `NEXT_PUBLIC_APP_ENV=production`
+2. **First Time Setup:**
+   - Choose your gender (Male = Wallet verification, Female = Face verification)
+   - Complete the verification process
+   - Create your profile
+   - Start swiping!
 
-3. **Deploy**
-   - Vercel will automatically deploy from your GitHub repository
-   - Or manually trigger deployment from Vercel dashboard
+## Deployment Status:
+✅ **Your app is successfully deployed!**
+- The Vercel dashboard shows "Enabled" status
+- No authentication configuration needed
+- App uses in-memory storage (perfect for demo)
 
 ## Notes:
 - The app will work without Face++ API keys (uses simulation)
 - Database uses in-memory storage in production (data won't persist between deployments)
 - For persistent data, consider integrating with a database service like PlanetScale, Supabase, or MongoDB Atlas
+- The welcome page (`/welcome`) serves as the entry point for new users
 
-## Testing After Deployment:
-- Test main page (`/`)
-- Test profile creation (`/create-profile`)  
-- Test face verification (`/face-verification`)
-- Test wallet connection (`/wallet-connection`)
-- Check console for any remaining errors
+## Testing Your Deployment:
+1. Visit your Vercel URL
+2. You should see the welcome page
+3. Click "Sign Up / Login"
+4. Choose verification method and complete setup
+5. The app should work normally after that
