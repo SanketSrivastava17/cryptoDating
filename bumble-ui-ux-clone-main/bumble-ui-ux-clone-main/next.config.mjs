@@ -9,6 +9,10 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  // Handle API routes in serverless environment
+  experimental: {
+    serverComponentsExternalPackages: ['fs'],
+  },
 }
 
 export default nextConfig

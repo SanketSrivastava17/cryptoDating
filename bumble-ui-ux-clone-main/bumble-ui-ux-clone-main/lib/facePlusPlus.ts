@@ -26,8 +26,8 @@ export async function analyzeGenderWithFacePlusPlus(imageDataUrl: string): Promi
     const apiKey = process.env.NEXT_PUBLIC_FACEPP_API_KEY
     const apiSecret = process.env.NEXT_PUBLIC_FACEPP_API_SECRET
 
-    if (!apiKey || !apiSecret) {
-      console.warn('Face++ API credentials not found, using fallback simulation')
+    if (!apiKey || !apiSecret || apiKey === 'your_facepp_api_key_here' || apiSecret === 'your_facepp_api_secret_here') {
+      console.warn('Face++ API credentials not found or are placeholder values, using fallback simulation')
       return simulateGenderDetection()
     }
 

@@ -5,6 +5,9 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import crypto from 'crypto'
 
+// Check if we're in a production environment that doesn't support file writes
+const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1'
+
 const DB_FILE = path.join(process.cwd(), 'data.json')
 
 // Password hashing utilities
@@ -61,7 +64,21 @@ let isLoaded = false;
 
 async function loadDatabase() {
   if (isLoaded) return;
-  
+
+  // In production environments that don't support file writes, use empty data
+  if (isProduction) {
+    console.log('Production environment detected, using empty database');
+    users = [];
+    profiles = [];
+    faceVerifications = [];
+    walletVerifications = [];
+    swipeActions = [];
+    matches = [];
+    idCounter = 1;
+    isLoaded = true;
+    return;
+  }
+
   try {
     const data = await fs.readFile(DB_FILE, 'utf-8');
     const parsed = JSON.parse(data);
@@ -88,11 +105,17 @@ async function loadDatabase() {
 }
 
 async function saveDatabase() {
+  // Skip saving in production environments that don't support file writes
+  if (isProduction) {
+    console.log('Production environment detected, skipping file save');
+    return;
+  }
+
   try {
     // Read current conversations and messages from file to preserve them
     let existingConversations = [];
     let existingMessages = [];
-    
+
     try {
       const existingData = await fs.readFile(DB_FILE, 'utf-8');
       const parsed = JSON.parse(existingData);
@@ -102,7 +125,7 @@ async function saveDatabase() {
       // File doesn't exist or is invalid, use empty arrays
       console.log('No existing conversations/messages found, starting fresh');
     }
-    
+
     const data = {
       users,
       profiles,
@@ -175,12 +198,12 @@ export const dbUtils = {
     if (!user || !user.password_hash) {
       return null;
     }
-    
+
     const isValidPassword = verifyPassword(password, user.password_hash);
     if (!isValidPassword) {
       return null;
     }
-    
+
     // Return user data without password hash
     const { password_hash, ...userWithoutPassword } = user;
     return userWithoutPassword;
@@ -193,13 +216,13 @@ export const dbUtils = {
     gender: 'male' | 'female';
   }) => {
     await loadDatabase();
-    
+
     // Check if user already exists
     const existingUser = users.find(user => user.email === data.email);
     if (existingUser) {
       throw new Error('User with this email already exists');
     }
-    
+
     const newUser: User = {
       id: generateId(),
       email: data.email,
@@ -212,7 +235,7 @@ export const dbUtils = {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
-    
+
     users.push(newUser);
     await saveDatabase();
     return { userId: newUser.id, user: newUser };
@@ -286,7 +309,7 @@ export const dbUtils = {
   }) => {
     await loadDatabase();
     console.log('Creating profile with data:', data);
-    
+
     // Optional: Remove any existing profiles for this user to avoid duplicates
     // Comment this out if you want to keep multiple profiles per user
     const existingProfileIndex = profiles.findIndex(p => p.user_id === data.user_id);
@@ -294,7 +317,7 @@ export const dbUtils = {
       console.log(`Removing existing profile for user ${data.user_id} to replace with new one`);
       profiles.splice(existingProfileIndex, 1);
     }
-    
+
     const newProfile: Profile = {
       id: generateId(),
       user_id: data.user_id,
@@ -319,23 +342,23 @@ export const dbUtils = {
   getProfileByUserId: async (userId: number) => {
     await loadDatabase();
     console.log(`Looking for profile with userId: ${userId} (type: ${typeof userId})`);
-    console.log(`Available profiles:`, profiles.map(p => ({id: p.id, user_id: p.user_id, name: p.name, created_at: p.created_at})));
-    
+    console.log(`Available profiles:`, profiles.map(p => ({ id: p.id, user_id: p.user_id, name: p.name, created_at: p.created_at })));
+
     // Find ALL profiles for this user and return the most recent one
-    const userProfiles = profiles.filter(profile => 
+    const userProfiles = profiles.filter(profile =>
       profile.user_id === userId || profile.user_id === parseInt(userId.toString())
     );
-    
+
     if (userProfiles.length === 0) {
       console.log(`No profiles found for userId: ${userId}`);
       return null;
     }
-    
+
     // Sort by creation date (most recent first) and return the latest profile
-    const mostRecentProfile = userProfiles.sort((a, b) => 
+    const mostRecentProfile = userProfiles.sort((a, b) =>
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     )[0];
-    
+
     console.log(`Found ${userProfiles.length} profiles for user ${userId}, returning most recent:`, mostRecentProfile);
     return mostRecentProfile;
   },
@@ -415,28 +438,28 @@ export const dbUtils = {
   // Discover profiles for swiping
   getDiscoverProfiles: async (userId: number, lookingFor: string) => {
     await loadDatabase();
-    
+
     // Get profiles that match the user's preferences
     const eligibleProfiles = profiles.filter(profile => {
       // Don't show user's own profile
       if (profile.user_id === userId) return false;
-      
+
       // Filter by gender preference
       if (lookingFor !== 'both' && profile.gender !== lookingFor) return false;
-      
+
       // Check if user hasn't already swiped on this profile
-      const hasSwipedAlready = swipeActions.some(swipe => 
+      const hasSwipedAlready = swipeActions.some(swipe =>
         swipe.user_id === userId && swipe.target_user_id === profile.user_id
       );
       if (hasSwipedAlready) return false;
-      
+
       // Only show verified users with completed profiles
       const user = users.find(u => u.id === profile.user_id);
       if (!user || user.verification_status !== 'verified' || !user.profile_completed) return false;
-      
+
       return true;
     });
-    
+
     // Shuffle and return up to 10 profiles
     const shuffled = eligibleProfiles.sort(() => Math.random() - 0.5);
     return shuffled.slice(0, 10);
@@ -460,27 +483,27 @@ export const dbUtils = {
   // Check if two users liked each other (match)
   checkForMatch: async (userId: number, targetUserId: number) => {
     await loadDatabase();
-    
+
     // Check if the target user has already liked this user
-    const targetUserLiked = swipeActions.some(swipe => 
-      swipe.user_id === targetUserId && 
-      swipe.target_user_id === userId && 
+    const targetUserLiked = swipeActions.some(swipe =>
+      swipe.user_id === targetUserId &&
+      swipe.target_user_id === userId &&
       (swipe.action_type === 'like' || swipe.action_type === 'super_like')
     );
-    
+
     return targetUserLiked;
   },
 
   // Create match record
   createMatch: async (userId1: number, userId2: number) => {
     await loadDatabase();
-    
+
     // Check if match already exists
-    const existingMatch = matches.some(match => 
+    const existingMatch = matches.some(match =>
       (match.user1_id === userId1 && match.user2_id === userId2) ||
       (match.user1_id === userId2 && match.user2_id === userId1)
     );
-    
+
     if (!existingMatch) {
       const newMatch = {
         id: generateId(),
@@ -493,25 +516,25 @@ export const dbUtils = {
       await saveDatabase();
       return { lastInsertRowid: newMatch.id };
     }
-    
+
     return null;
   },
 
   // Get user's matches
   getUserMatches: async (userId: number) => {
     await loadDatabase();
-    
-    const userMatches = matches.filter(match => 
+
+    const userMatches = matches.filter(match =>
       (match.user1_id === userId || match.user2_id === userId) && match.is_active
     );
-    
+
     // Get profiles for matched users
     const matchedProfiles = userMatches.map(match => {
       const matchedUserId = match.user1_id === userId ? match.user2_id : match.user1_id;
       const profile = profiles.find(p => p.user_id === matchedUserId);
       return { ...match, profile };
     }).filter(match => match.profile);
-    
+
     return matchedProfiles;
   }
 };
@@ -520,17 +543,17 @@ export const dbUtils = {
 export async function getMatchQueueForUser(userId: number) {
   await loadDatabase();
   const data = JSON.parse(await fs.readFile(DB_FILE, 'utf-8'));
-  
+
   // Get all matches for this user from the current data
   const userMatches = (data.matches || []).filter((match: any) =>
     (match.user1_id === userId || match.user2_id === userId) && match.is_active
   );
-  
+
   // For each match, get the conversation
   const queue = [];
   for (const match of userMatches) {
     const conversation = (data.conversations || []).find((conv: any) => conv.match_id === match.id);
-    
+
     // If no conversation, add to queue
     if (!conversation) {
       const otherUserId = match.user1_id === userId ? match.user2_id : match.user1_id;
@@ -538,7 +561,7 @@ export async function getMatchQueueForUser(userId: number) {
       if (profile) queue.push({ match, profile, reason: 'no_conversation' });
       continue;
     }
-    
+
     // If conversation exists but no messages
     const messages = (data.messages || []).filter((msg: any) => msg.conversation_id === conversation.id);
     if (messages.length === 0) {
@@ -547,7 +570,7 @@ export async function getMatchQueueForUser(userId: number) {
       if (profile) queue.push({ match, profile, reason: 'no_messages' });
     }
   }
-  
+
   return queue;
 }
 
@@ -575,28 +598,28 @@ export interface Message {
 // Messaging functions
 export const getConversationsByUserId = async (userId: number) => {
   await loadDatabase();
-  
+
   // Read current data to get conversations
   const data = JSON.parse(await fs.readFile(DB_FILE, 'utf-8'));
-  
+
   // Get conversations where user is a participant
-  const userConversations = (data.conversations || []).filter((conv: Conversation) => 
+  const userConversations = (data.conversations || []).filter((conv: Conversation) =>
     conv.participants.includes(userId) && conv.is_active
   );
-  
+
   // Enrich with participant profiles and last message info
   const enrichedConversations = await Promise.all(
     userConversations.map(async (conv: Conversation) => {
       // Get other participant (not the current user)
       const otherUserId = conv.participants.find(id => id !== userId);
       const otherUserProfile = profiles.find(p => p.user_id === otherUserId);
-      
+
       // Get last message if exists
       let lastMessage = null;
       if (conv.last_message_id) {
         lastMessage = (data.messages || []).find((msg: Message) => msg.id === conv.last_message_id);
       }
-      
+
       return {
         ...conv,
         otherUser: otherUserProfile,
@@ -604,7 +627,7 @@ export const getConversationsByUserId = async (userId: number) => {
       };
     })
   );
-  
+
   // Sort by last message time (most recent first)
   return enrichedConversations.sort((a, b) => {
     if (!a.last_message_at && !b.last_message_at) return 0;
@@ -616,16 +639,16 @@ export const getConversationsByUserId = async (userId: number) => {
 
 export const getMessagesByConversationId = async (conversationId: number) => {
   await loadDatabase();
-  
+
   // Read current data to get messages
   const data = JSON.parse(await fs.readFile(DB_FILE, 'utf-8'));
-  
-  const conversationMessages = (data.messages || []).filter((msg: Message) => 
+
+  const conversationMessages = (data.messages || []).filter((msg: Message) =>
     msg.conversation_id === conversationId
   );
-  
+
   // Sort by creation time (oldest first for chat display)
-  return conversationMessages.sort((a: Message, b: Message) => 
+  return conversationMessages.sort((a: Message, b: Message) =>
     new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
 };
@@ -637,18 +660,18 @@ export const sendMessage = async (messageData: {
   messageType: 'text' | 'image' | 'sticker';
 }) => {
   await loadDatabase();
-  
+
   // Read current data
   const data = JSON.parse(await fs.readFile(DB_FILE, 'utf-8'));
-  
+
   if (!data.messages) data.messages = [];
   if (!data.conversations) data.conversations = [];
-  
+
   // Generate new ID and increment counter
   const newMessageId = data.idCounter || idCounter;
   data.idCounter = newMessageId + 1;
   idCounter = data.idCounter; // Keep local counter in sync
-  
+
   // Create new message
   const newMessage: Message = {
     id: newMessageId,
@@ -659,53 +682,53 @@ export const sendMessage = async (messageData: {
     created_at: new Date().toISOString(),
     is_read: false
   };
-  
+
   data.messages.push(newMessage);
-  
+
   // Update conversation's last message info
-  const conversationIndex = data.conversations.findIndex((conv: Conversation) => 
+  const conversationIndex = data.conversations.findIndex((conv: Conversation) =>
     conv.id === messageData.conversationId
   );
-  
+
   if (conversationIndex !== -1) {
     data.conversations[conversationIndex].last_message_id = newMessage.id;
     data.conversations[conversationIndex].last_message_at = newMessage.created_at;
   }
-  
+
   // Update the database file
   await fs.writeFile(DB_FILE, JSON.stringify(data, null, 2));
-  
+
   return newMessage;
 };
 
 export const createConversation = async (matchId: number) => {
   await loadDatabase();
-  
+
   // Read current data
   const data = JSON.parse(await fs.readFile(DB_FILE, 'utf-8'));
-  
+
   if (!data.conversations) data.conversations = [];
-  
+
   // Find the match to get participants
   const match = matches.find(m => m.id === matchId);
   if (!match) {
     throw new Error('Match not found');
   }
-  
+
   // Check if conversation already exists for this match
-  const existingConversation = data.conversations.find((conv: Conversation) => 
+  const existingConversation = data.conversations.find((conv: Conversation) =>
     conv.match_id === matchId
   );
-  
+
   if (existingConversation) {
     return existingConversation;
   }
-  
+
   // Generate new ID and increment counter
   const newConversationId = data.idCounter || idCounter;
   data.idCounter = newConversationId + 1;
   idCounter = data.idCounter; // Keep local counter in sync
-  
+
   // Create new conversation
   const newConversation: Conversation = {
     id: newConversationId,
@@ -716,22 +739,22 @@ export const createConversation = async (matchId: number) => {
     created_at: new Date().toISOString(),
     is_active: true
   };
-  
+
   data.conversations.push(newConversation);
-  
+
   // Update the database file
   await fs.writeFile(DB_FILE, JSON.stringify(data, null, 2));
-  
+
   return newConversation;
 };
 
 export const getConversationByMatchId = async (matchId: number) => {
   await loadDatabase();
-  
+
   // Read current data
   const data = JSON.parse(await fs.readFile(DB_FILE, 'utf-8'));
-  
-  return (data.conversations || []).find((conv: Conversation) => 
+
+  return (data.conversations || []).find((conv: Conversation) =>
     conv.match_id === matchId
   );
 };
@@ -739,17 +762,17 @@ export const getConversationByMatchId = async (matchId: number) => {
 // Swipe actions functions
 export const performSwipeAction = async (userId: number, targetUserId: number, action: 'like' | 'pass') => {
   await loadDatabase();
-  
+
   const data = JSON.parse(await fs.readFile(DB_FILE, 'utf-8'));
-  
+
   if (!data.swipeActions) data.swipeActions = [];
   if (!data.matches) data.matches = [];
-  
+
   // Generate new ID and increment counter
   const newSwipeId = data.idCounter || idCounter;
   data.idCounter = newSwipeId + 1;
   idCounter = data.idCounter;
-  
+
   // Create swipe action
   const swipeAction = {
     id: newSwipeId,
@@ -758,9 +781,9 @@ export const performSwipeAction = async (userId: number, targetUserId: number, a
     action,
     created_at: new Date().toISOString()
   };
-  
+
   data.swipeActions.push(swipeAction);
-  
+
   // Check for mutual like to create match
   let isMatch = false;
   if (action === 'like') {
@@ -769,13 +792,13 @@ export const performSwipeAction = async (userId: number, targetUserId: number, a
       swipe.target_user_id === userId &&
       swipe.action === 'like'
     );
-    
+
     if (targetUserSwipe) {
       // Create a match
       const newMatchId = data.idCounter || idCounter;
       data.idCounter = newMatchId + 1;
       idCounter = data.idCounter;
-      
+
       const match = {
         id: newMatchId,
         user1_id: Math.min(userId, targetUserId),
@@ -783,47 +806,47 @@ export const performSwipeAction = async (userId: number, targetUserId: number, a
         created_at: new Date().toISOString(),
         is_active: true
       };
-      
+
       data.matches.push(match);
       isMatch = true;
     }
   }
-  
+
   await fs.writeFile(DB_FILE, JSON.stringify(data, null, 2));
-  
+
   return { swipeAction, isMatch };
 };
 
 export const getSwipeActionsByUserId = async (userId: number) => {
   await loadDatabase();
-  
+
   const data = JSON.parse(await fs.readFile(DB_FILE, 'utf-8'));
-  
+
   return (data.swipeActions || []).filter((swipe: any) => swipe.user_id === userId);
 };
 
 // Matches functions
 export const getMatchesByUserId = async (userId: number) => {
   await loadDatabase();
-  
+
   const data = JSON.parse(await fs.readFile(DB_FILE, 'utf-8'));
-  
-  const userMatches = (data.matches || []).filter((match: any) => 
+
+  const userMatches = (data.matches || []).filter((match: any) =>
     (match.user1_id === userId || match.user2_id === userId) && match.is_active
   );
-  
+
   // Enrich with other user's profile
   const enrichedMatches = userMatches.map((match: any) => {
     const otherUserId = match.user1_id === userId ? match.user2_id : match.user1_id;
     const otherUserProfile = profiles.find(p => p.user_id === otherUserId);
-    
+
     return {
       ...match,
       otherUser: otherUserProfile
     };
   });
-  
-  return enrichedMatches.sort((a: any, b: any) => 
+
+  return enrichedMatches.sort((a: any, b: any) =>
     new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
 };
